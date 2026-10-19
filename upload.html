@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Upload · Mark Babaran Portfolio</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#000;color:#F5F5F7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#C9BBFB;text-decoration:none}a:hover{color:#fff}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 20px;background:rgba(22,22,23,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.08)}
+header img{width:26px;height:26px}
+header b{font-size:14px;flex:1}
+main{max-width:1000px;margin:0 auto;padding:32px 20px 80px;display:flex;flex-direction:column;gap:28px}
+h1{margin:0;font-size:32px;letter-spacing:-.02em}
+p{margin:0;color:#A1A1A6;line-height:1.5}
+.card{background:#1C1C1E;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px}
+input[type=password]{height:44px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#2C2C2E;color:#F5F5F7;padding:0 14px;font-size:16px;width:100%;max-width:320px}
+button,.btn{cursor:pointer;height:40px;padding:0 16px;border-radius:980px;border:none;background:#F5F5F7;color:#000;font-size:14px;font-weight:600;font-family:inherit}
+.ghost{background:rgba(255,255,255,.08);color:#F5F5F7}
+.tabs{display:flex;gap:4px;padding:3px;border-radius:980px;background:rgba(255,255,255,.06);flex-wrap:wrap;width:max-content;max-width:100%}
+.tabs button{height:34px;background:transparent;color:#A1A1A6}
+.tabs button.on{background:#F5F5F7;color:#000}
+h3{margin:0;font-size:15px}
+.grid{display:grid;gap:10px}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.slot{position:relative;border-radius:14px;background:#2C2C2E;border:1.5px dashed rgba(255,255,255,.16);overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}
+.slot.has{border-style:solid;border-color:rgba(255,255,255,.08)}
+.slot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.slot span{font-size:12px;color:#A1A1A6;padding:8px}
+.slot .x{position:absolute;top:6px;right:6px;width:26px;height:26px;padding:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:14px;z-index:2}
+.slot.busy::after{content:'Uploading…';position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:13px;z-index:3}
+.slot.drag{border-color:#C9BBFB;background:rgba(164,140,247,.12)}
+.sq{aspect-ratio:1}.tall{aspect-ratio:9/16}.post{aspect-ratio:4/5}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(44,44,46,.95);border:1px solid rgba(255,255,255,.1);padding:12px 18px;border-radius:980px;font-size:14px;display:none;z-index:9}
+.err{color:#FF9F95;font-size:13px}
+@media (max-width:600px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header><img src="brand/aw-logo-5-dark.svg" alt=""><b>Portfolio uploads</b><a class="btn ghost" href="/" style="display:inline-flex;align-items:center">View portfolio ↗</a></header>
+<main>
+  <div style="display:flex;flex-direction:column;gap:8px"><h1>Add pictures to the portfolio</h1><p>Pick a client, then tap or drag a picture onto a box. It saves right away and shows on the portfolio.</p></div>
+
+  <div class="card" id="gate">
+    <h3>Upload code</h3>
+    <p>Ask Mark for the code.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="code" placeholder="Code"><button id="go">Continue</button></div>
+    <span class="err" id="gerr"></span>
+  </div>
+
+  <div id="app" style="display:none;flex-direction:column;gap:24px">
+    <div class="tabs" id="tabs"></div>
+    <div id="slots" style="display:flex;flex-direction:column;gap:24px"></div>
+  </div>
+</main>
+<div id="toast"></div>
+<input type="file" id="file" accept="image/*" style="display:none">
+<script>
+const CLIENTS = [['neelias', "Neelia's"], ['wrappers', "Wrapper's Delight"], ['boostpad', 'The Boost Pad'], ['miles', 'Miles Enterprise']];
+const GROUPS = [['Graphics', 'g', 3, 'sq', 'g3', 'Square graphic'], ['Reels', 'r', 4, 'tall', 'g4', 'Reel cover'], ['Posts', 'p', 3, 'post', 'g3', 'Post screenshot']];
+let code = sessionStorage.getItem('pf-code') || '', client = CLIENTS[0][0], have = {}, target = null;
+const $ = id => document.getElementById(id);
+const toast = m => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2400); };
+const api = body => fetch('/.netlify/functions/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, ...body }) }).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Upload failed'); return j; });
+async function load() { try { const j = await (await fetch('/.netlify/functions/list', { cache: 'no-store' })).json(); have = j.items || {}; } catch (e) { have = {}; } render(); }
+function render() {
+  $('tabs').innerHTML = ''; CLIENTS.forEach(([k, n]) => { const b = document.createElement('button'); b.textContent = n; if (k === client) b.className = 'on'; b.onclick = () => { client = k; render(); }; $('tabs').appendChild(b); });
+  const wrap = $('slots'); wrap.innerHTML = '';
+  GROUPS.forEach(([label, p, n, shape, cols, ph]) => {
+    const sec = document.createElement('div'); sec.style.cssText = 'display:flex;flex-direction:column;gap:10px';
+    sec.innerHTML = `<h3>${label}</h3>`; const g = document.createElement('div'); g.className = 'grid ' + cols;
+    for (let i = 1; i <= n; i++) {
+      const id = `${client}-${p}${i}`, s = document.createElement('div'); s.className = 'slot ' + shape + (have[id] ? ' has' : ''); s.dataset.id = id;
+      s.innerHTML = have[id] ? `<img src="/.netlify/functions/img?id=${id}&v=${have[id]}" alt=""><button class="x" title="Remove">×</button>` : `<span>${ph} ${i}<br>Tap or drop</span>`;
+      s.onclick = e => { if (e.target.classList.contains('x')) return remove(id); target = s; $('file').click(); };
+      s.ondragover = e => { e.preventDefault(); s.classList.add('drag'); }; s.ondragleave = () => s.classList.remove('drag');
+      s.ondrop = e => { e.preventDefault(); s.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) upload(s, f); };
+      g.appendChild(s);
+    }
+    sec.appendChild(g); wrap.appendChild(sec);
+  });
+}
+function shrink(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const img = new Image(); img.onload = () => { const m = 1800, sc = Math.min(1, m / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .86).split(',')[1]); }; img.onerror = rej; img.src = r.result; }; r.onerror = rej; r.readAsDataURL(file); }); }
+async function upload(s, f) { if (!/^image\//.test(f.type)) return toast('Please choose an image'); s.classList.add('busy'); try { const data = await shrink(f); await api({ id: s.dataset.id, data, type: 'image/jpeg' }); toast('Saved'); await load(); } catch (e) { s.classList.remove('busy'); toast(e.message); } }
+async function remove(id) { if (!confirm('Remove this picture?')) return; try { await api({ id, action: 'delete' }); toast('Removed'); load(); } catch (e) { toast(e.message); } }
+$('file').onchange = e => { const f = e.target.files[0]; if (f && target) upload(target, f); e.target.value = ''; };
+async function enter() { code = $('code').value.trim() || code; $('gerr').textContent = ''; try { await api({ id: 'check', action: 'check' }); sessionStorage.setItem('pf-code', code); $('gate').style.display = 'none'; $('app').style.display = 'flex'; load(); } catch (e) { $('gerr').textContent = e.message; } }
+$('go').onclick = enter; $('code').onkeydown = e => { if (e.key === 'Enter') enter(); };
+if (code) enter();
+</script>
+</body>
+</html>
